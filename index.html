@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professional CV Builder Pro | Live Preview & Customizable Templates</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Merriweather:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400;1,700&family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-root">
+        <!-- Top App Bar -->
+        <header class="navbar">
+            <div class="nav-brand">
+                <div class="brand-icon">📄</div>
+                <div class="brand-text">
+                    <span class="brand-title">CV Builder Pro</span>
+                    <span class="brand-badge">Live Editor</span>
+                </div>
+            </div>
+
+            <div class="nav-center-actions">
+                <div class="template-quick-pill">
+                    <span class="pill-label">Template:</span>
+                    <button type="button" class="template-selector-btn" onclick="openTemplateModal()" id="currentTemplateBtn">
+                        <span id="currentTemplateName">Classic Clear</span>
+                        <span class="pill-arrow">▾</span>
+                    </button>
+                </div>
+
+                <div class="sample-loader-dropdown">
+                    <button type="button" class="btn-ghost" onclick="toggleSampleMenu()">
+                        <span>⚡ Load Sample CV</span>
+                        <span class="pill-arrow">▾</span>
+                    </button>
+                    <div class="dropdown-menu" id="sampleMenu">
+                        <div class="dropdown-header">Choose a Pre-filled Profile</div>
+                        <button type="button" class="dropdown-item" onclick="loadSampleTemplate('ayaan')">
+                            <strong>Muhammad Ayaan</strong> (Software Engineering Student)
+                        </button>
+                        <button type="button" class="dropdown-item active" onclick="loadSampleTemplate('classic')">
+                            <strong>Emily Carter</strong> (Classic Clear - Project Manager)
+                        </button>
+                        <button type="button" class="dropdown-item" onclick="loadSampleTemplate('serif')">
+                            <strong>Lena Hoffmann</strong> (Executive Serif - Operations Manager)
+                        </button>
+                        <button type="button" class="dropdown-item" onclick="loadSampleTemplate('executive')">
+                            <strong>Olivia Bennett</strong> (Modern Executive - Customer Service)
+                        </button>
+                        <button type="button" class="dropdown-item" onclick="loadSampleTemplate('sidebar')">
+                            <strong>Élodie Martin</strong> (Two-Column Sidebar - Marketing Director)
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="nav-right-actions">
+                <button type="button" class="btn-nav btn-nav-upload" onclick="document.getElementById('resumeUpload').click()" title="Upload a .txt or .pdf resume to auto-fill">
+                    <span>📤 Upload</span>
+                </button>
+                <input type="file" id="resumeUpload" accept=".txt,.pdf" style="display: none;" onchange="handleResumeUpload(event)">
+                
+                <button type="button" class="btn-nav btn-nav-ai" onclick="getAISuggestions()" title="AI-powered review & optimization">
+                    <span>🤖 AI Review</span>
+                </button>
+                <button type="button" class="btn-nav btn-nav-print" onclick="printCV()" title="Print CV">
+                    <span>🖨️ Print</span>
+                </button>
+                <button type="button" class="btn-nav btn-nav-download" onclick="downloadPDF()" title="Download PDF formatted for A4 printing">
+                    <span>⬇️ Download PDF</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Status Notification Banner -->
+        <div id="uploadStatus" class="global-status" style="display: none;"></div>
+
+        <!-- Main Workspace -->
+        <main class="workspace">
+            <!-- Left Panel: Controls & Editor -->
+            <section class="left-pane">
+                <!-- Tab Navigation Header -->
+                <nav class="editor-tabs">
+                    <button type="button" class="tab-btn active" data-tab="tab-content" onclick="switchTab('tab-content')">
+                        <span class="tab-icon">✏️</span> Content
+                    </button>
+                    <button type="button" class="tab-btn" data-tab="tab-styling" onclick="switchTab('tab-styling')">
+                        <span class="tab-icon">📐</span> Font & Spacing
+                    </button>
+                    <button type="button" class="tab-btn" data-tab="tab-templates" onclick="switchTab('tab-templates')">
+                        <span class="tab-icon">🎨</span> Templates
+                    </button>
+                </nav>
+
+                <!-- TAB 1: Content Editor -->
+                <div class="tab-pane active" id="tab-content">
+                    <div class="editor-scrollable">
+                        <!-- Quick Actions Bar inside Editor -->
+                        <div class="content-toolbar">
+                            <span class="live-indicator"><span class="pulse-dot"></span> Live sync active</span>
+                            <div class="toolbar-btns">
+                                <button type="button" class="btn-sm btn-outline-danger" onclick="clearForm()" title="Clear all fields">🗑️ Reset</button>
+                            </div>
+                        </div>
+
+                        <!-- Personal Information Card -->
+                        <div class="card-section">
+                            <div class="card-section-header" onclick="toggleAccordion(this)">
+                                <div class="card-title">
+                                    <span class="section-icon">👤</span>
+                                    <span>Personal Information</span>
+                                </div>
+                                <span class="accordion-arrow">▾</span>
+                            </div>
+                            <div class="card-section-body">
+                                <div class="grid-2">
+                                    <div class="form-field">
+                                        <label for="fullName">Full Name</label>
+                                        <input type="text" id="fullName" placeholder="e.g. Emily Carter" oninput="onDataChanged()">
+                                    </div>
+                                    <div class="form-field">
+                                        <label for="jobTitle">Job Title</label>
+                                        <input type="text" id="jobTitle" placeholder="e.g. Project Manager" oninput="onDataChanged()">
+                                    </div>
+                                </div>
+
+                                <div class="grid-2">
+                                    <div class="form-field">
+                                        <label for="email">Email Address</label>
+                                        <input type="email" id="email" placeholder="e.g. emily.carter@email.com" oninput="onDataChanged()">
+                                    </div>
+                                    <div class="form-field">
+                                        <label for="phone">Phone Number</label>
+                                        <input type="tel" id="phone" placeholder="e.g. +1 416 555 2847" oninput="onDataChanged()">
+                                    </div>
+                                </div>
+
+                                <div class="grid-2">
+                                    <div class="form-field">
+                                        <label for="location">Location</label>
+                                        <input type="text" id="location" placeholder="e.g. Toronto, Canada" oninput="onDataChanged()">
+                                    </div>
+                                    <div class="form-field">
+                                        <label for="linkedin">LinkedIn</label>
+                                        <input type="text" id="linkedin" placeholder="e.g. linkedin.com/in/emily-carter" oninput="onDataChanged()">
+                                    </div>
+                                </div>
+
+                                <div class="form-field">
+                                    <label for="portfolio">Portfolio / Website (Optional)</label>
+                                    <input type="text" id="portfolio" placeholder="e.g. emilycarter.dev" oninput="onDataChanged()">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Professional Summary Card -->
+                        <div class="card-section">
+                            <div class="card-section-header" onclick="toggleAccordion(this)">
+                                <div class="card-title">
+                                    <span class="section-icon">📝</span>
+                                    <span>Professional Summary</span>
+                                </div>
+                                <span class="accordion-arrow">▾</span>
+                            </div>
+                            <div class="card-section-body">
+                                <div class="form-field">
+                                    <textarea id="summary" rows="4" placeholder="Write a brief professional summary..." oninput="onDataChanged()"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Work Experience Card -->
+                        <div class="card-section">
+                            <div class="card-section-header" onclick="toggleAccordion(this)">
+                                <div class="card-title">
+                                    <span class="section-icon">💼</span>
+                                    <span>Professional Experience</span>
+                                    <span class="badge-count" id="expCountBadge">0</span>
+                                </div>
+                                <span class="accordion-arrow">▾</span>
+                            </div>
+                            <div class="card-section-body">
+                                <div id="experienceList" class="items-list"></div>
+                                <button type="button" class="btn-dashed-add" onclick="addExperience()">
+                                    <span>+ Add Work Experience</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Education Card -->
+                        <div class="card-section">
+                            <div class="card-section-header" onclick="toggleAccordion(this)">
+                                <div class="card-title">
+                                    <span class="section-icon">🎓</span>
+                                    <span>Education</span>
+                                    <span class="badge-count" id="eduCountBadge">0</span>
+                                </div>
+                                <span class="accordion-arrow">▾</span>
+                            </div>
+                            <div class="card-section-body">
+                                <div id="educationList" class="items-list"></div>
+                                <button type="button" class="btn-dashed-add" onclick="addEducation()">
+                                    <span>+ Add Education</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Skills Card -->
+                        <div class="card-section" id="skillsCard">
+                            <div class="card-section-header" onclick="toggleAccordion(this)">
+                                <div class="card-title">
+                                    <span class="section-icon">💡</span>
+                                    <span>Skills</span>
+                                    <span class="badge-count" id="skillsCountBadge">0</span>
+                                </div>
+                                <span class="accordion-arrow">▾</span>
+                            </div>
+                            <div class="card-section-body">
+                                <div class="skill-input-wrapper">
+                                    <input type="text" id="skillInput" placeholder="Type a skill and press Enter..." onkeydown="handleSkillKey(event)">
+                                    <button type="button" class="btn-input-add" onclick="handleAddSkillClick()">Add</button>
+                                </div>
+                                <div id="skillsList" class="skills-tag-cloud"></div>
+                            </div>
+                        </div>
+
+                        <!-- Dynamic Extra Sections Container -->
+                        <div id="dynamicSections"></div>
+
+                        <!-- Add More Sections Box -->
+                        <div class="add-sections-banner">
+                            <div class="banner-text">
+                                <h4>Add More Sections</h4>
+                                <p>Certificates, Languages, Projects, Awards, Custom & more</p>
+                            </div>
+                            <button type="button" class="btn-banner-action" onclick="openAddContentModal()">
+                                + Add Section
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: Typography & Spacing (Exact Image 5 UI) -->
+                <div class="tab-pane" id="tab-styling">
+                    <div class="editor-scrollable styling-container">
+                        <!-- Font Size Card -->
+                        <div class="style-group-card">
+                            <h3 class="style-card-title">Font Size</h3>
+
+                            <!-- Base Font Size -->
+                            <div class="slider-row">
+                                <div class="slider-info">
+                                    <span class="slider-label">Base Font Size</span>
+                                    <span class="slider-val" id="valBaseFontSize">10pt</span>
+                                </div>
+                                <div class="segmented-control">
+                                    <div class="segmented-track" id="trackBaseFontSize" onclick="handleTrackClick('baseFontSize', event)">
+                                        <div class="segment-ticks">
+                                            <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                                        </div>
+                                        <div class="segment-block" id="blockBaseFontSize"></div>
+                                    </div>
+                                    <button type="button" class="btn-step" onclick="stepSetting('baseFontSize', -1)" title="Decrease">-</button>
+                                    <button type="button" class="btn-step" onclick="stepSetting('baseFontSize', 1)" title="Increase">+</button>
+                                </div>
+                            </div>
+
+                            <!-- Full Name -->
+                            <div class="slider-row">
+                                <div class="slider-info">
+                                    <span class="slider-label">Full Name</span>
+                                    <span class="slider-val" id="valNameSize">+11pt</span>
+                                </div>
+                                <div class="segmented-control">
+                                    <div class="segmented-track" id="trackNameSize" onclick="handleTrackClick('nameSize', event)">
+                                        <div class="segment-ticks">
+                                            <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                                        </div>
+                                        <div class="segment-block" id="blockNameSize"></div>
+                                    </div>
+                                    <button type="button" class="btn-step" onclick="stepSetting('nameSize', -1)" title="Decrease">-</button>
+                                    <button type="button" class="btn-step" onclick="stepSetting('nameSize', 1)" title="Increase">+</button>
+                                </div>
+                            </div>
+
+                            <!-- Section Headings -->
+                            <div class="slider-row">
+                                <div class="slider-info">
+                                    <span class="slider-label">Section Headings</span>
+                                    <span class="slider-val" id="valHeadingsSize">+2.5pt</span>
+                                </div>
+                                <div class="segmented-control">
+                                    <div class="segmented-track" id="trackHeadingsSize" onclick="handleTrackClick('headingsSize', event)">
+                                        <div class="segment-ticks">
+                                            <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                                        </div>
+                                        <div class="segment-block" id="blockHeadingsSize"></div>
+                                    </div>
+                                    <button type="button" class="btn-step" onclick="stepSetting('headingsSize', -1)" title="Decrease">-</button>
+                                    <button type="button" class="btn-step" onclick="stepSetting('headingsSize', 1)" title="Increase">+</button>
+                                </div>
+                            </div>
+
+                            <!-- Entry Header -->
+                            <div class="slider-row">
+                                <div class="slider-info">
+                                    <span class="slider-label">Entry Header</span>
+                                    <span class="slider-val" id="valEntryHeaderSize">+0pt</span>
+                                </div>
+                                <div class="segmented-control">
+                                    <div class="segmented-track" id="trackEntryHeaderSize" onclick="handleTrackClick('entryHeaderSize', event)">
+                                        <div class="segment-ticks">
+                                            <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                                        </div>
+                                        <div class="segment-block" id="blockEntryHeaderSize"></div>
+                                    </div>
+                                    <button type="button" class="btn-step" onclick="stepSetting('entryHeaderSize', -1)" title="Decrease">-</button>
+                                    <button type="button" class="btn-step" onclick="stepSetting('entryHeaderSize', 1)" title="Increase">+</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Spacing Card -->
+                        <div class="style-group-card">
+                            <h3 class="style-card-title">Spacing</h3>
+
+                            <!-- Line Height -->
+                            <div class="slider-row">
+                                <div class="slider-info">
+                                    <span class="slider-label">Line Height</span>
+                                    <span class="slider-val" id="valLineHeight">1.15</span>
+                                </div>
+                                <div class="segmented-control">
+                                    <div class="segmented-track" id="trackLineHeight" onclick="handleTrackClick('lineHeight', event)">
+                                        <div class="segment-ticks">
+                                            <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                                        </div>
+                                        <div class="segment-block" id="blockLineHeight"></div>
+                                    </div>
+                                    <button type="button" class="btn-step" onclick="stepSetting('lineHeight', -1)" title="Decrease">-</button>
+                                    <button type="button" class="btn-step" onclick="stepSetting('lineHeight', 1)" title="Increase">+</button>
+                                </div>
+                            </div>
+
+                            <!-- Space Between Elements -->
+                            <div class="slider-row">
+                                <div class="slider-info">
+                                    <span class="slider-label">Space Between Elements</span>
+                                    <span class="slider-val" id="valElementSpacing">[--]</span>
+                                </div>
+                                <div class="segmented-control">
+                                    <div class="segmented-track" id="trackElementSpacing" onclick="handleTrackClick('elementSpacing', event)">
+                                        <div class="segment-ticks">
+                                            <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                                        </div>
+                                        <div class="segment-block" id="blockElementSpacing"></div>
+                                    </div>
+                                    <button type="button" class="btn-step" onclick="stepSetting('elementSpacing', -1)" title="Decrease">-</button>
+                                    <button type="button" class="btn-step" onclick="stepSetting('elementSpacing', 1)" title="Increase">+</button>
+                                </div>
+                            </div>
+
+                            <!-- Left & Right Margin -->
+                            <div class="slider-row">
+                                <div class="slider-info">
+                                    <span class="slider-label">Left & Right Margin</span>
+                                    <span class="slider-val" id="valMarginX">12mm</span>
+                                </div>
+                                <div class="segmented-control">
+                                    <div class="segmented-track" id="trackMarginX" onclick="handleTrackClick('marginX', event)">
+                                        <div class="segment-ticks">
+                                            <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                                        </div>
+                                        <div class="segment-block" id="blockMarginX"></div>
+                                    </div>
+                                    <button type="button" class="btn-step" onclick="stepSetting('marginX', -1)" title="Decrease">-</button>
+                                    <button type="button" class="btn-step" onclick="stepSetting('marginX', 1)" title="Increase">+</button>
+                                </div>
+                            </div>
+
+                            <!-- Top & Bottom Margin -->
+                            <div class="slider-row">
+                                <div class="slider-info">
+                                    <span class="slider-label">Top & Bottom Margin</span>
+                                    <span class="slider-val" id="valMarginY">12mm</span>
+                                </div>
+                                <div class="segmented-control">
+                                    <div class="segmented-track" id="trackMarginY" onclick="handleTrackClick('marginY', event)">
+                                        <div class="segment-ticks">
+                                            <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                                        </div>
+                                        <div class="segment-block" id="blockMarginY"></div>
+                                    </div>
+                                    <button type="button" class="btn-step" onclick="stepSetting('marginY', -1)" title="Decrease">-</button>
+                                    <button type="button" class="btn-step" onclick="stepSetting('marginY', 1)" title="Increase">+</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Floating / Pinned Undo-Redo Pill (Image 5) -->
+                        <div class="undo-redo-pill-wrapper">
+                            <div class="undo-redo-pill">
+                                <button type="button" class="pill-btn" id="btnUndo" onclick="undo()" title="Undo">
+                                    <span>↶</span>
+                                </button>
+                                <div class="pill-divider"></div>
+                                <button type="button" class="pill-btn" id="btnRedo" onclick="redo()" title="Redo">
+                                    <span>↷</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: Templates Explorer -->
+                <div class="tab-pane" id="tab-templates">
+                    <div class="editor-scrollable">
+                        <div class="templates-intro">
+                            <h3>Curated Resume Templates</h3>
+                            <p>Pick a template style below. You can apply it to your current data, or load the authentic profile for that template.</p>
+                        </div>
+
+                        <div class="templates-grid-display">
+                            <!-- Template 2: Classic Clear (Default) -->
+                            <div class="template-showcase-card active" id="tplCard-classic">
+                                <div class="template-thumbnail tpl-thumb-classic">
+                                    <div class="thumb-header">
+                                        <div class="thumb-name">Emily Carter</div>
+                                        <div class="thumb-title">Project Manager</div>
+                                    </div>
+                                    <div class="thumb-lines">
+                                        <div class="thumb-line"></div>
+                                        <div class="thumb-line sm"></div>
+                                    </div>
+                                </div>
+                                <div class="showcase-content">
+                                    <div class="showcase-meta">
+                                        <span class="badge-default">Default</span>
+                                        <h4>Classic Clear</h4>
+                                    </div>
+                                    <p class="showcase-desc">Clean, balanced single-column layout with classic serif elegance, bulleted multi-column skills & certificates.</p>
+                                    <div class="showcase-actions">
+                                        <button type="button" class="btn-apply-template" onclick="selectTemplate('classic', false)">Apply Style</button>
+                                        <button type="button" class="btn-load-data" onclick="loadSampleTemplate('classic')">Load Profile</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Template 1: Executive Serif -->
+                            <div class="template-showcase-card" id="tplCard-serif">
+                                <div class="template-thumbnail tpl-thumb-serif">
+                                    <div class="thumb-header serif">
+                                        <div class="thumb-name">Lena Hoffmann</div>
+                                        <div class="thumb-title">Operations Manager</div>
+                                    </div>
+                                    <div class="thumb-lines">
+                                        <div class="thumb-line full"></div>
+                                        <div class="thumb-line sm"></div>
+                                    </div>
+                                </div>
+                                <div class="showcase-content">
+                                    <div class="showcase-meta">
+                                        <h4>Executive Serif</h4>
+                                    </div>
+                                    <p class="showcase-desc">Distinguished editorial styling with pipe-separated skill tags, full divider rules, and high-level corporate prestige.</p>
+                                    <div class="showcase-actions">
+                                        <button type="button" class="btn-apply-template" onclick="selectTemplate('serif', false)">Apply Style</button>
+                                        <button type="button" class="btn-load-data" onclick="loadSampleTemplate('serif')">Load Profile</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Template 3: Modern Executive -->
+                            <div class="template-showcase-card" id="tplCard-executive">
+                                <div class="template-thumbnail tpl-thumb-executive">
+                                    <div class="thumb-header teal">
+                                        <div class="thumb-name">Olivia Bennett</div>
+                                        <div class="thumb-title">Head of Customer Service</div>
+                                    </div>
+                                    <div class="thumb-lines">
+                                        <div class="thumb-line teal"></div>
+                                        <div class="thumb-line sm"></div>
+                                    </div>
+                                </div>
+                                <div class="showcase-content">
+                                    <div class="showcase-meta">
+                                        <h4>Modern Executive</h4>
+                                    </div>
+                                    <p class="showcase-desc">Navy/teal accented headers, comprehensive multi-column skills matrix, and high-density leadership hierarchy.</p>
+                                    <div class="showcase-actions">
+                                        <button type="button" class="btn-apply-template" onclick="selectTemplate('executive', false)">Apply Style</button>
+                                        <button type="button" class="btn-load-data" onclick="loadSampleTemplate('executive')">Load Profile</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Template 4: Two-Column Sidebar -->
+                            <div class="template-showcase-card" id="tplCard-sidebar">
+                                <div class="template-thumbnail tpl-thumb-sidebar">
+                                    <div class="thumb-side">
+                                        <div class="thumb-name-sm">Élodie Martin</div>
+                                        <div class="thumb-dots">●●●●○</div>
+                                    </div>
+                                    <div class="thumb-main">
+                                        <div class="thumb-line full"></div>
+                                        <div class="thumb-line sm"></div>
+                                    </div>
+                                </div>
+                                <div class="showcase-content">
+                                    <div class="showcase-meta">
+                                        <h4>Two-Column Sidebar</h4>
+                                    </div>
+                                    <p class="showcase-desc">Modern split-column layout with section icons, visual language rating dots, and dedicated project achievements.</p>
+                                    <div class="showcase-actions">
+                                        <button type="button" class="btn-apply-template" onclick="selectTemplate('sidebar', false)">Apply Style</button>
+                                        <button type="button" class="btn-load-data" onclick="loadSampleTemplate('sidebar')">Load Profile</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Panel: Live Resume Preview Canvas -->
+            <section class="right-pane">
+                <!-- Preview Canvas Bar -->
+                <div class="preview-toolbar">
+                    <div class="preview-mode-tag">
+                        <span class="page-badge">A4 Standard</span>
+                        <span class="inline-edit-tip">💡 Click anywhere on the resume to edit text directly</span>
+                    </div>
+
+                    <div class="zoom-controls">
+                        <button type="button" class="zoom-btn" onclick="adjustZoom(-0.1)" title="Zoom Out">-</button>
+                        <span class="zoom-level" id="zoomLevelText">100%</span>
+                        <button type="button" class="zoom-btn" onclick="adjustZoom(0.1)" title="Zoom In">+</button>
+                        <button type="button" class="zoom-btn-fit" onclick="resetZoom()">Fit</button>
+                    </div>
+                </div>
+
+                <!-- Scrollable Viewport with A4 Paper Canvas -->
+                <div class="canvas-viewport" id="canvasViewport">
+                    <div class="resume-paper" id="resumePaper">
+                        <!-- Dynamic Resume Template Injected Here -->
+                        <div id="cvPreview" class="cv-render-container"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Template Selection Modal (Matching Image 2 Card Design) -->
+        <div id="templateModal" class="modal">
+            <div class="modal-content modal-template-showcase">
+                <div class="modal-header">
+                    <h2>Select Resume Template</h2>
+                    <span class="close-modal" onclick="closeTemplateModal()">&times;</span>
+                </div>
+                <div class="modal-body-split">
+                    <!-- Left: Template options list -->
+                    <div class="modal-tpl-list">
+                        <div class="tpl-list-item active" onclick="previewModalTemplate('classic')" id="tplItem-classic">
+                            <div class="item-title">Classic Clear</div>
+                            <div class="item-sub">Clean, professional serif layout (Default)</div>
+                        </div>
+                        <div class="tpl-list-item" onclick="previewModalTemplate('serif')" id="tplItem-serif">
+                            <div class="item-title">Executive Serif</div>
+                            <div class="item-sub">Distinguished editorial corporate styling</div>
+                        </div>
+                        <div class="tpl-list-item" onclick="previewModalTemplate('executive')" id="tplItem-executive">
+                            <div class="item-title">Modern Executive</div>
+                            <div class="item-sub">Deep teal accents with 4-column skills matrix</div>
+                        </div>
+                        <div class="tpl-list-item" onclick="previewModalTemplate('sidebar')" id="tplItem-sidebar">
+                            <div class="item-title">Two-Column Sidebar</div>
+                            <div class="item-sub">Side panel layout with icons & rating dots</div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Big Highlight Card (Exact Image 2 Style) -->
+                    <div class="modal-tpl-detail">
+                        <div class="detail-badge" id="modalDetailBadge">RECOMMENDED</div>
+                        <h2 class="detail-title" id="modalDetailTitle">CLASSIC CLEAR</h2>
+                        <p class="detail-desc" id="modalDetailDesc">
+                            Each template has been crafted with care to make designing your resume an absolute breeze for you.
+                        </p>
+                        <ul class="detail-features" id="modalDetailFeatures">
+                            <li>A4 / US-Letter Size</li>
+                            <li>Editable Text & Live Preview</li>
+                            <li>Fully customizable typography & spacing</li>
+                            <li>Print ready pixel-perfect format</li>
+                            <li>Multi-column skills & certificate alignment</li>
+                        </ul>
+                        <div class="detail-buttons">
+                            <button type="button" class="btn-use-template" onclick="confirmModalTemplate(false)">
+                                Use this template
+                            </button>
+                            <button type="button" class="btn-load-template-data" onclick="confirmModalTemplate(true)">
+                                Use & Load Pre-filled Profile
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Content Section Modal -->
+        <div id="addContentModal" class="modal">
+            <div class="modal-content modal-content-options">
+                <div class="modal-header">
+                    <h2>Add Content Section</h2>
+                    <span class="close-modal" onclick="closeAddContentModal()">&times;</span>
+                </div>
+                <div class="content-options-grid">
+                    <div class="content-option" onclick="addSection('certificates')">
+                        <div class="content-icon">📜</div>
+                        <h3>Certificates</h3>
+                        <p>Industry licenses, certifications & credentials</p>
+                    </div>
+                    <div class="content-option" onclick="addSection('languages')">
+                        <div class="content-icon">🌐</div>
+                        <h3>Languages</h3>
+                        <p>Languages spoken and proficiency ratings</p>
+                    </div>
+                    <div class="content-option" onclick="addSection('projects')">
+                        <div class="content-icon">🚀</div>
+                        <h3>Projects</h3>
+                        <p>Key initiatives, technical projects & outcomes</p>
+                    </div>
+                    <div class="content-option" onclick="addSection('awards')">
+                        <div class="content-icon">🏆</div>
+                        <h3>Awards</h3>
+                        <p>Honors, competitions & industry recognitions</p>
+                    </div>
+                    <div class="content-option" onclick="addSection('links')">
+                        <div class="content-icon">🔗</div>
+                        <h3>Links & Portfolios</h3>
+                        <p>GitHub, portfolio websites, profiles</p>
+                    </div>
+                    <div class="content-option-custom" onclick="addCustomSection()">
+                        <div class="content-icon">✏️</div>
+                        <h3>Custom Section</h3>
+                        <p>Create any custom section tailored to your role</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Resume Review Modal -->
+        <div id="aiModal" class="modal">
+            <div class="modal-content ai-modal-content">
+                <div class="modal-header">
+                    <h2>🤖 AI Resume Review</h2>
+                    <span class="close-modal" onclick="closeAIModal()">&times;</span>
+                </div>
+                <div id="aiSuggestionsContent" class="ai-suggestions-content">
+                    <div class="ai-loading">
+                        <div class="spinner"></div>
+                        <p>AI is analyzing your resume content...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PDF.js Library for PDF upload parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        if (typeof pdfjsLib !== 'undefined') {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+    </script>
+    <script src="script.js"></script>
+</body>
+</html>

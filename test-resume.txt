@@ -1,0 +1,52 @@
+John Smith
+Senior Software Engineer
+
+john.smith@email.com
++1-555-123-4567
+San Francisco, CA
+
+Professional Summary
+Experienced software engineer with 8+ years of expertise in full-stack development, cloud architecture, and team leadership. Proven track record of delivering scalable applications and mentoring junior developers.
+
+Work Experience
+
+Lead Software Engineer
+Tech Corp Inc., San Francisco, CA
+January 2020 - Present
+- Led a team of 5 developers in building a cloud-based SaaS platform
+- Improved system performance by 40% through optimization
+- Implemented CI/CD pipelines reducing deployment time by 60%
+
+Software Engineer
+StartUp Solutions, San Francisco, CA
+June 2016 - December 2019
+- Developed RESTful APIs serving 1M+ daily requests
+- Built responsive web applications using React and Node.js
+- Collaborated with cross-functional teams on product roadmap
+
+Education
+
+Bachelor of Science in Computer Science
+Stanford University, Stanford, CA
+2012 - 2016
+
+Skills
+JavaScript, TypeScript, React, Node.js, Python, AWS, Docker, Kubernetes, PostgreSQL, MongoDB, Git, Agile
+
+Projects
+
+E-Commerce Platform
+Built a full-stack e-commerce application with React, Node.js, and Stripe integration. Handled 10,000+ transactions.
+
+Open Source Contributor
+Regular contributor to popular JavaScript libraries with 50+ merged pull requests.
+
+Certifications
+
+AWS Certified Solutions Architect
+Amazon Web Services
+2021
+
+Languages
+English - Native
+Spanish - Intermediate
