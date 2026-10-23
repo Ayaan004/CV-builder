@@ -2227,22 +2227,37 @@ async function handleResumeUpload(event) {
             const arrayBuffer = await file.arrayBuffer();
             const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             let fullText = '';
+
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
                 const textContent = await page.getTextContent();
-                let lastY = null;
-                for (const item of textContent.items) {
-                    if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
-                        fullText += '\n';
-                    } else if (item.hasEOL) {
-                        fullText += '\n';
-                    } else if (fullText.length > 0 && !fullText.endsWith('\n') && !fullText.endsWith(' ')) {
-                        fullText += ' ';
+                const items = (textContent.items || []).filter(it => it.str && it.str.trim().length > 0);
+
+                if (items.length === 0) continue;
+
+                // Sort descending Y (top to bottom of page), ascending X (left to right for items on same line)
+                const sorted = items.slice().sort((a, b) => {
+                    const yA = a.transform[5];
+                    const yB = b.transform[5];
+                    if (Math.abs(yA - yB) <= 4) {
+                        return a.transform[4] - b.transform[4];
                     }
-                    fullText += item.str;
-                    lastY = item.transform[5];
+                    return yB - yA;
+                });
+
+                let pageText = '';
+                let lastY = null;
+                for (const it of sorted) {
+                    const y = it.transform[5];
+                    if (lastY !== null && Math.abs(y - lastY) > 4) {
+                        pageText += '\n';
+                    } else if (pageText.length > 0 && !pageText.endsWith('\n') && !pageText.endsWith(' ')) {
+                        pageText += ' ';
+                    }
+                    pageText += it.str.trim();
+                    lastY = y;
                 }
-                fullText += '\n';
+                fullText += pageText + '\n\n';
             }
             extractedText = fullText;
         } else {
@@ -2259,42 +2274,81 @@ async function handleResumeUpload(event) {
     event.target.value = '';
 }
 
+function collapseSpacedLetters(text, emailClue) {
+    return text.split('\n').map(line => {
+        const trimmed = line.trim();
+        // Check if line consists of spaced single letters (e.g. "S A R I M  J A W A D" or "S A R I M J A W A D")
+        if (/^(?:[A-Za-z]\s+){2,}[A-Za-z]/.test(trimmed)) {
+            if (/\s{2,}/.test(trimmed)) {
+                return trimmed.split(/\s{2,}/).map(w => w.replace(/\s+/g, '')).join(' ');
+            }
+            if (emailClue) {
+                const parts = emailClue.split(' ');
+                const noSpaces = trimmed.replace(/\s+/g, '').toLowerCase();
+                if (noSpaces.includes(parts.join('')) || parts.every(p => noSpaces.includes(p))) {
+                    return parts.map(p => p.toUpperCase()).join(' ');
+                }
+            }
+            return trimmed.replace(/\s+/g, ' ');
+        }
+        return line;
+    }).join('\n');
+}
+
+function normalizeResumeText(rawText) {
+    if (!rawText) return '';
+    let text = rawText.replace(/\r/g, '');
+    text = text.replace(/[\u00A0\u2000-\u200B\u202F\u205F\u3000]/g, ' ');
+    // Standardize all exotic bullet glyphs to standard bullet '•'
+    text = text.replace(/[\uF0B7\uF0A7\uF0D8\uF076\u25CF\u25AA\u25AB\u25A0\u25A1\u25E6\u2023\u2043\u2219\u00B7]/g, '•');
+
+    const lines = text.split('\n').map(l => l.trim());
+    const merged = [];
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line) {
+            merged.push('');
+            continue;
+        }
+
+        // Merge solitary bullet symbol with next line
+        if (/^[•\-\*·▪●◦]$/.test(line)) {
+            if (i + 1 < lines.length && lines[i + 1].trim()) {
+                lines[i + 1] = '• ' + lines[i + 1].trim().replace(/^[•\-\*·▪●◦]\s*/, '');
+                continue;
+            }
+        }
+        merged.push(line);
+    }
+
+    return merged.join('\n');
+}
+
 function parseAndPopulateResume(rawText) {
     if (!rawText || !rawText.trim()) return;
 
-    let text = rawText.replace(/\r/g, ' ').replace(/\s+/g, ' ').trim();
+    let cleanText = normalizeResumeText(rawText);
 
-    // 1. Separate major sections (match longest uppercase headings first)
-    const sectionKeywords = [
-        'PROJECTS & EXPERIENCE',
-        'PROJECTS AND EXPERIENCE',
-        'PROFESSIONAL EXPERIENCE',
-        'WORK EXPERIENCE',
-        'TECHNICAL SKILLS',
-        'EDUCATION',
-        'PROJECTS',
-        'EXPERIENCE',
-        'SKILLS',
-        'PROFILE',
-        'SUMMARY',
-        'ABOUT ME',
-        'CERTIFICATIONS',
-        'CERTIFICATES',
-        'LANGUAGES',
-        'AWARDS'
-    ];
+    // 1. Email extraction first
+    let email = '';
+    let emailClue = '';
+    const emailMatch = cleanText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    if (emailMatch) {
+        email = emailMatch[0];
+        const u = email.split('@')[0].replace(/\d+/g, '');
+        const p = u.split(/[._-]/).filter(x => x.length >= 3);
+        if (p.length >= 2) emailClue = p.join(' ').toLowerCase();
+    }
 
-    sectionKeywords.forEach(kw => {
-        const re = new RegExp('\\b' + kw.replace('&', '\\&') + '\\b', 'g');
-        text = text.replace(re, '\n__SEC_' + kw.replace(/[\s&]+/g, '_') + '__:\n');
-    });
+    cleanText = collapseSpacedLetters(cleanText, emailClue);
 
-    // 2. Clear old state so previous profile data is never mixed in
+    // Reset current CV data store
     cvData = {
         personal: {
             fullName: '',
             jobTitle: '',
-            email: '',
+            email: email,
             phone: '',
             location: '',
             linkedin: '',
@@ -2310,152 +2364,448 @@ function parseAndPopulateResume(rawText) {
         awards: []
     };
 
-    // 3. Extract Contact Information
-    const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    if (emailMatch) cvData.personal.email = emailMatch[0];
-
-    const phoneMatch = text.match(/(?:\+?\d{1,4}[-.\s]?)?\(?\d{2,5}\)?[-.\s]?\d{3,5}[-.\s]?\d{3,5}/);
-    if (phoneMatch) cvData.personal.phone = phoneMatch[0].trim();
-
-    const linkedinMatch = text.match(/linkedin\.com\/in\/\s*([a-zA-Z0-9_-]+)/i);
-    if (linkedinMatch) cvData.personal.linkedin = 'linkedin.com/in/' + linkedinMatch[1].replace(/\s+/g, '');
-
-    const githubMatch = text.match(/github\.com\/([a-zA-Z0-9_-]+)/i);
-    if (githubMatch) cvData.personal.portfolio = 'github.com/' + githubMatch[1];
-
-    const websiteMatch = text.match(/([a-zA-Z0-9_-]+\.(?:netlify\.app|vercel\.app|github\.io))/i);
-    if (websiteMatch) cvData.personal.portfolio = websiteMatch[0];
-
-    const locMatch = text.match(/(Federal B Area Block \d+,?\s*[A-Z][a-z]+|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,\s*[A-Z][a-z]+|Karachi|Islamabad|Lahore|Toronto|Berlin|London|Sydney|New York)/i);
-    if (locMatch) cvData.personal.location = locMatch[0];
-
-    // 4. Extract Full Name (strictly from header text before contact details)
-    let headerText = text.split('\n')[0] || '';
-    if (emailMatch) headerText = headerText.split(emailMatch[0])[0];
-    if (phoneMatch) headerText = headerText.split(phoneMatch[0])[0];
-    headerText = headerText.replace(/Federal B Area.*$/i, '').trim();
-    headerText = headerText.replace(/[\w.-]+@.*$/i, '').trim();
-
-    const nameMatch = headerText.match(/^[A-Z\s]{2,40}|^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}/);
-    cvData.personal.fullName = nameMatch ? nameMatch[0].trim() : (headerText.slice(0, 32).trim() || 'Professional');
-
-    // 5. Job Title
-    const titleMatch = text.match(/(?:Motivated|Experienced|Skilled)\s+([A-Za-z\s]+(?:student|engineer|developer|specialist|manager|analyst))/i);
-    if (titleMatch) {
-        cvData.personal.jobTitle = titleMatch[1].trim();
-    } else {
-        cvData.personal.jobTitle = 'Software Developer';
+    // 2. Phone
+    const phoneMatch = cleanText.match(/(?:\+?\d{1,4}[-.\s]?)?\(?\d{2,5}\)?[-.\s]?\d{3,5}[-.\s]?\d{3,5}/);
+    if (phoneMatch) {
+        cvData.personal.phone = phoneMatch[0].trim();
     }
 
-    // 6. Summary / Profile
-    const profileMatch = text.match(/__SEC_(?:PROFILE|SUMMARY|ABOUT_ME)__:\s*([\s\S]*?)(?=\n__SEC_|$)/);
-    if (profileMatch) {
-        cvData.personal.summary = profileMatch[1].trim();
+    // 3. LinkedIn
+    const linkedinMatch = cleanText.match(/linkedin\.com\/in\/([a-zA-Z0-9_-]+)/i);
+    if (linkedinMatch) {
+        cvData.personal.linkedin = 'linkedin.com/in/' + linkedinMatch[1];
     }
 
-    // 7. Education
-    const eduMatch = text.match(/__SEC_EDUCATION__:\s*([\s\S]*?)(?=\n__SEC_|$)/);
-    if (eduMatch) {
-        const eduSection = eduMatch[1].trim();
-        const degreeBlocks = eduSection.split(/(?=Bachelor|Master|Intermediate|Diploma|Doctor|B\.S|M\.S)/i).filter(s => s.trim().length > 5);
-        degreeBlocks.forEach(item => {
-            const yearMatch = item.match(/(\d{4}\s*[-–—]\s*(?:Present|\d{4}))/i);
-            const years = yearMatch ? yearMatch[0].trim() : '';
-            let rest = item.replace(years, '').trim();
+    // 4. Portfolio / GitHub / Website
+    const githubMatch = cleanText.match(/github\.com\/([a-zA-Z0-9_-]+)/i);
+    if (githubMatch) {
+        cvData.personal.portfolio = 'github.com/' + githubMatch[1];
+    }
+    const webMatch = cleanText.match(/([a-zA-Z0-9_-]+\.(?:netlify\.app|vercel\.app|github\.io))/i);
+    if (webMatch && !cvData.personal.portfolio) {
+        cvData.personal.portfolio = webMatch[0];
+    }
 
-            let degree = rest;
-            let school = '';
-            if (rest.includes('Karachi University')) {
-                degree = rest.replace('Karachi University', '').trim();
-                school = 'Karachi University';
-            } else if (rest.includes('Pakistan Shipowners Gov. College')) {
-                degree = rest.replace('Pakistan Shipowners Gov. College', '').trim();
-                school = 'Pakistan Shipowners Gov. College';
-            } else {
-                const parts = rest.split(/(?=University|College|Institute|School)/i);
-                if (parts.length > 1) {
-                    degree = parts[0].trim();
-                    school = parts.slice(1).join(' ').trim();
-                }
+    // 5. Strict Calendar Year Date Range Regex (1950 - 2035) - Prevents phone numbers from ever matching as dates
+    const dateRangeRegex = /\b(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?|\d{1,2}\/(?:19|20)\d{2})\s*)?(?:19|20)\d{2}\s*(?:[-–—]|\bto\b)\s*(?:Present|Current|Now|(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?|\d{1,2}\/(?:19|20)\d{2})\s*)?(?:19|20)\d{2})\b/i;
+
+    const rawLines = cleanText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+    // 6. Comprehensive Section Identification
+    const sectionDefinitions = [
+        { key: 'summary', regex: /^(?:PROFESSIONAL\s+SUMMARY|EXECUTIVE\s+SUMMARY|ABOUT\s+ME|PROFILE|PERSONAL\s+PROFILE|SUMMARY|CAREER\s+OBJECTIVE|OBJECTIVE|OVERVIEW)\b/i },
+        { key: 'skills', regex: /^(?:TECHNICAL\s+SKILLS|CORE\s+COMPETENCIES|KEY\s+SKILLS|SKILLS\s+&\s+ABILITIES|SKILLS\s+AND\s+ABILITIES|AREAS\s+OF\s+EXPERTISE|COMPETENCIES|TECHNOLOGIES|SKILLS)\b/i },
+        { key: 'experience', regex: /^(?:PROFESSIONAL\s+EXPERIENCE|WORK\s+EXPERIENCE|EXPERIENCE|EMPLOYMENT\s+HISTORY|WORK\s+HISTORY|PROFESSIONAL\s+BACKGROUND|CAREER\s+HISTORY)\b/i },
+        { key: 'education', regex: /^(?:EDUCATION\s+&\s+QUALIFICATIONS|EDUCATION\s+AND\s+QUALIFICATIONS|ACADEMIC\s+BACKGROUND|ACADEMIC\s+QUALIFICATIONS|EDUCATION|ACADEMICS|QUALIFICATIONS)\b/i },
+        { key: 'projects', regex: /^(?:KEY\s+PROJECTS|PERSONAL\s+PROJECTS|ACADEMIC\s+PROJECTS|PROJECTS\s+&\s+EXPERIENCE|PROJECTS\s+AND\s+EXPERIENCE|SELECTED\s+PROJECTS|PROJECTS)\b/i },
+        { key: 'certificates', regex: /^(?:LICENSES\s+&\s+CERTIFICATIONS|COURSES\s+&\s+CERTIFICATIONS|CERTIFICATIONS|CERTIFICATES|LICENSES|COURSES)\b/i },
+        { key: 'languages', regex: /^(?:LANGUAGE\s+PROFICIENCY|LANGUAGES\s+SPOKEN|LANGUAGES)\b/i },
+        { key: 'awards', regex: /^(?:HONORS\s+&\s+AWARDS|AWARDS\s+&\s+ACHIEVEMENTS|ACHIEVEMENTS|HONORS|AWARDS|ACTIVITIES|VOLUNTEER(?:ING)?)\b/i }
+    ];
+
+    const lineSections = [];
+    rawLines.forEach((line, idx) => {
+        const trimmed = line.replace(/^[\s#\d.*\-•·|]+/, '').replace(/[:\-–—\s]+$/, '').trim();
+        for (const sec of sectionDefinitions) {
+            if (sec.regex.test(trimmed)) {
+                lineSections.push({ key: sec.key, lineIdx: idx });
+                break;
             }
-            cvData.education.push({
-                degree: degree,
-                school: school,
-                startDate: years ? years.split(/[-–—]/)[0].trim() : '',
-                endDate: years && (years.includes('–') || years.includes('-')) ? years.split(/[-–—]/)[1].trim() : 'Present',
-                location: cvData.personal.location ? cvData.personal.location.split(',').pop().trim() : ''
-            });
-        });
-    }
+        }
+    });
 
-    // 8. Skills
-    const skillsMatch = text.match(/__SEC_(?:SKILLS|TECHNICAL_SKILLS)__:\s*([\s\S]*?)(?=\n__SEC_|$)/);
-    if (skillsMatch) {
-        const skillsSection = skillsMatch[1].trim();
-        const rawSkills = skillsSection.replace(/(?:Frontend Development|Backend & Database|Backend and Database|Others|Tools):/gi, ',');
-        const skillList = rawSkills.split(/[,•\n]/).map(s => s.trim().replace(/\(.*?\)/g, '').trim()).filter(s => s.length > 1 && s.length < 40 && !s.includes(':'));
-        cvData.skills = [...new Set(skillList)];
-    }
+    lineSections.sort((a, b) => a.lineIdx - b.lineIdx);
 
-    // 9. Projects & Experience
-    const projMatch = text.match(/__SEC_(?:PROJECTS_EXPERIENCE|PROJECTS_AND_EXPERIENCE|PROJECTS|EXPERIENCE)__:\s*([\s\S]*?)(?=\n__SEC_|$)/);
-    if (projMatch) {
-        const projSection = projMatch[1].trim();
-        const parts = projSection.split('•').map(p => p.trim()).filter(p => p.length > 0);
-        if (parts.length > 0) {
-            let currentTitle = parts[0];
-            let currentRole = 'Software Project';
-            if (currentTitle.includes('—')) {
-                const tParts = currentTitle.split('—');
-                currentTitle = tParts[0].trim();
-                currentRole = tParts[1].trim();
-            }
+    const firstSectionLineIdx = lineSections.length > 0 ? lineSections[0].lineIdx : rawLines.length;
+    const headerLines = rawLines.slice(0, firstSectionLineIdx);
 
-            let currentBullets = [];
-
-            for (let i = 1; i < parts.length; i++) {
-                const item = parts[i];
-                const lastPeriodIdx = item.lastIndexOf('.');
-                if (lastPeriodIdx !== -1 && lastPeriodIdx < item.length - 3) {
-                    const bulletText = item.substring(0, lastPeriodIdx + 1).trim();
-                    const nextTitleRaw = item.substring(lastPeriodIdx + 1).trim();
-
-                    if (bulletText) currentBullets.push('• ' + bulletText);
-
-                    if (currentTitle) {
-                        cvData.projects.push({
-                            name: currentTitle,
-                            role: currentRole,
-                            description: currentBullets.join('\n')
-                        });
-                    }
-
-                    currentTitle = nextTitleRaw.replace(/^for bakery site\s*/i, '').trim();
-                    currentRole = 'Software Project';
-                    if (currentTitle.includes('—')) {
-                        const tParts = currentTitle.split('—');
-                        currentTitle = tParts[0].trim();
-                        currentRole = tParts[1].trim();
-                    }
-                    currentBullets = [];
-                } else {
-                    currentBullets.push('• ' + item);
-                }
-            }
-
-            if (currentTitle && currentBullets.length > 0) {
-                cvData.projects.push({
-                    name: currentTitle,
-                    role: currentRole,
-                    description: currentBullets.join('\n')
-                });
+    // 7. Full Name Resolution
+    let foundName = '';
+    if (emailClue) {
+        const parts = emailClue.split(' ');
+        if (parts.length >= 2) {
+            const re = new RegExp('\\b(' + parts[0] + '\\s+' + parts[1] + ')\\b', 'i');
+            const m = cleanText.match(re);
+            if (m) {
+                foundName = m[0].split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
             }
         }
     }
 
-    // 10. Enable projects section if projects were extracted
+    const nameBlacklist = /^(?:Regulatory\s+Knowledge|Technical\s+Skills|Core\s+Competencies|Professional\s+Summary|Executive\s+Summary|Work\s+Experience|Professional\s+Experience|Education|Curriculum\s+Vitae|Resume|Profile|Contact\s+Information|About\s+Me|Objective|Certifications|Languages|Projects|I\b|We\b)/i;
+
+    if (!foundName) {
+        for (const line of headerLines) {
+            let l = line.replace(email, '').replace(cvData.personal.phone, '').replace(/[·|•\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+            if (nameBlacklist.test(l)) continue;
+            if (/\b(am|is|are|dedicated|learning|seeking|staying|experienced|years)\b/i.test(l)) continue;
+            if (l.length >= 3 && l.length <= 35 && (/^[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){1,3}$/.test(l) || /^[A-Z\s]{4,35}$/.test(l))) {
+                foundName = l;
+                break;
+            }
+        }
+    }
+
+    cvData.personal.fullName = foundName || 'Professional';
+
+    // 8. Location
+    const locLabeled = cleanText.match(/(?:Location|Address|City)\s*:\s*([^\n\r,]+(?:,\s*[^\n\r]+)?)/i);
+    if (locLabeled) {
+        cvData.personal.location = locLabeled[1].trim();
+    } else {
+        const knownCities = /(?:Karachi|Lahore|Islamabad|Toronto|Ottawa|Montreal|Vancouver|San Francisco|San Jose|New York|Los Angeles|Seattle|Austin|Chicago|Boston|London|Manchester|Berlin|Munich|Frankfurt|Paris|Dubai|Singapore|Sydney|Melbourne)/i;
+        for (const line of rawLines.slice(0, 15)) {
+            if (knownCities.test(line) && !line.includes('@') && !/\b(am|is|are|have|has|dedicated|learning|seeking|experience|developer|engineer|manager)\b/i.test(line)) {
+                const m = line.match(/(?:[A-Za-z\s]+Block\s*\d+,\s*)?[A-Za-z\s]+,\s*[A-Za-z\s]+/);
+                if (m) {
+                    cvData.personal.location = m[0].trim();
+                    break;
+                } else if (line.length < 45) {
+                    cvData.personal.location = line.trim();
+                    break;
+                }
+            }
+        }
+    }
+
+    // 9. Section Chunks
+    const sectionBlocks = {};
+    for (let i = 0; i < lineSections.length; i++) {
+        const sec = lineSections[i];
+        const startLine = sec.lineIdx + 1;
+        const endLine = (i + 1 < lineSections.length) ? lineSections[i + 1].lineIdx : rawLines.length;
+        const sectionLines = rawLines.slice(startLine, endLine);
+        sectionBlocks[sec.key] = (sectionBlocks[sec.key] || []).concat(sectionLines);
+    }
+
+    // A. Summary
+    if (sectionBlocks.summary && sectionBlocks.summary.length > 0) {
+        cvData.personal.summary = sectionBlocks.summary.join(' ').replace(/\s+/g, ' ').trim();
+    }
+
+    // B. SKILLS PARSER: Preserves full sentences and bullet points
+    if (sectionBlocks.skills) {
+        const sLines = sectionBlocks.skills;
+        const skillItems = [];
+        let curSkill = '';
+
+        sLines.forEach(line => {
+            const trimmed = line.trim();
+            if (!trimmed) return;
+
+            const isBullet = /^[•\-\*▪●◦·]|\b[oO]\s+[A-Z]/.test(trimmed);
+
+            if (isBullet) {
+                if (curSkill) skillItems.push(curSkill);
+                curSkill = trimmed.replace(/^[•\-\*▪●◦·]\s*|^[oO]\s+/, '').trim();
+            } else if (curSkill && !curSkill.endsWith('.') && trimmed.length < 90) {
+                curSkill += ' ' + trimmed;
+            } else {
+                if (curSkill) {
+                    skillItems.push(curSkill);
+                    curSkill = '';
+                }
+                const parts = trimmed.split(/[,|/]/).map(p => p.trim()).filter(p => p.length > 1);
+                const allShort = parts.length > 1 && parts.every(p => p.length < 35 && !/\b(and|with|that|which|ensure|ensuring|enabling|analyzing|specializing)\b/i.test(p));
+
+                if (allShort) {
+                    parts.forEach(p => skillItems.push(p));
+                } else {
+                    skillItems.push(trimmed.replace(/^[•\-\*▪●◦·]\s*/, ''));
+                }
+            }
+        });
+        if (curSkill) skillItems.push(curSkill);
+        cvData.skills = [...new Set(skillItems.filter(s => s.length > 1))];
+    }
+
+    // C. PROFESSIONAL EXPERIENCE PARSER: Zero data loss, all jobs and bullets preserved
+    if (sectionBlocks.experience) {
+        const expLines = sectionBlocks.experience;
+        let currentJob = null;
+        let pendingHeaderLines = [];
+
+        for (let i = 0; i < expLines.length; i++) {
+            const line = expLines[i].trim();
+            if (!line) continue;
+
+            const isBullet = /^[•\-\*▪●◦·]|\b[oO]\s+[A-Z]/.test(line);
+            const dMatch = line.match(dateRangeRegex);
+
+            if (dMatch && !isBullet) {
+                if (currentJob) {
+                    cvData.experience.push(currentJob);
+                }
+
+                const dates = dMatch[0].trim();
+                const parts = dates.split(/\s*[-–—]\s*|\s+to\s+/i);
+                const startD = parts[0] ? parts[0].trim() : '';
+                const endD = parts[1] ? parts[1].trim() : 'Present';
+
+                let remainder = line.replace(dates, '').replace(/[|•,]/g, ' ').replace(/\s+/g, ' ').trim();
+                let company = remainder;
+                let title = '';
+
+                if (pendingHeaderLines.length >= 2) {
+                    const l1 = pendingHeaderLines[pendingHeaderLines.length - 2];
+                    const l2 = pendingHeaderLines[pendingHeaderLines.length - 1];
+                    if (/Engineer|Developer|Manager|Analyst|Director|Consultant|Architect|Lead|Coordinator|Officer|Executive|Specialist|Intern|Associate/i.test(l1)) {
+                        title = l1;
+                        company = l2;
+                    } else if (/Engineer|Developer|Manager|Analyst|Director|Consultant|Architect|Lead|Coordinator|Officer|Executive|Specialist|Intern|Associate/i.test(l2)) {
+                        company = l1;
+                        title = l2;
+                    } else {
+                        title = l1;
+                        company = l2;
+                    }
+                } else if (pendingHeaderLines.length === 1) {
+                    const prev = pendingHeaderLines[0];
+                    if (!company) {
+                        company = prev;
+                    } else {
+                        title = prev;
+                    }
+                }
+
+                if (!title && i + 1 < expLines.length) {
+                    const nextLine = expLines[i + 1].trim();
+                    if (!/^[•\-\*▪●◦·]/.test(nextLine) && !nextLine.match(dateRangeRegex) && nextLine.length < 65) {
+                        title = nextLine;
+                        i++;
+                    }
+                }
+
+                currentJob = {
+                    title: title || 'Professional Role',
+                    company: company || 'Company',
+                    location: '',
+                    startDate: startD,
+                    endDate: endD,
+                    description: ''
+                };
+                pendingHeaderLines = [];
+            } else if (isBullet) {
+                const bulletText = line.replace(/^[•\-\*▪●◦·]\s*|^[oO]\s+/, '').trim();
+                if (bulletText) {
+                    if (!currentJob) {
+                        currentJob = {
+                            title: 'Professional Experience',
+                            company: '',
+                            location: '',
+                            startDate: '',
+                            endDate: '',
+                            description: ''
+                        };
+                    }
+                    currentJob.description = currentJob.description 
+                        ? currentJob.description + '\n• ' + bulletText 
+                        : '• ' + bulletText;
+                }
+            } else {
+                if (currentJob) {
+                    if (!currentJob.title || currentJob.title === 'Professional Role') {
+                        if (line.length < 65 && !currentJob.description) {
+                            currentJob.title = line;
+                            continue;
+                        }
+                    }
+                    if (currentJob.description && !/[.!?:]$/.test(currentJob.description.trim()) && line.length < 90) {
+                        currentJob.description += ' ' + line;
+                    } else {
+                        currentJob.description = currentJob.description 
+                            ? currentJob.description + '\n• ' + line 
+                            : '• ' + line;
+                    }
+                } else {
+                    pendingHeaderLines.push(line);
+                }
+            }
+        }
+
+        if (currentJob) {
+            cvData.experience.push(currentJob);
+        }
+    }
+
+    // Set primary Job Title from first job entry or detected keywords
+    if (cvData.experience.length > 0 && cvData.experience[0].title) {
+        cvData.personal.jobTitle = cvData.experience[0].title;
+    } else {
+        const titleRegex = /(?:Information\s+Security\s+Analyst|Lead\s+Software\s+Engineer|Senior\s+Software\s+Engineer|Software\s+Engineer|Software\s+Developer|Project\s+Manager|Project\s+Coordinator|Operations\s+Manager|Operations\s+Analyst|Marketing\s+Director|Frontend\s+Developer|Backend\s+Developer|Full\s+Stack\s+Developer|Cyber\s+Security\s+Analyst|Data\s+Analyst|Software\s+Engineering\s+Student)/i;
+        const titleMatch = cleanText.match(titleRegex);
+        cvData.personal.jobTitle = titleMatch ? titleMatch[0].trim() : 'Professional';
+    }
+
+    // D. EDUCATION PARSER
+    if (sectionBlocks.education) {
+        const eduLines = sectionBlocks.education;
+        let pendingEdu = [];
+
+        for (let i = 0; i < eduLines.length; i++) {
+            const line = eduLines[i].trim();
+            if (!line) continue;
+
+            const dMatch = line.match(dateRangeRegex);
+            if (dMatch) {
+                const dates = dMatch[0];
+                const parts = dates.split(/\s*[-–—]\s*|\s+to\s+/i);
+                const startD = parts[0] ? parts[0].trim() : '';
+                const endD = parts[1] ? parts[1].trim() : '';
+                const rest = line.replace(dates, '').replace(/[|•,]/g, ' ').replace(/\s+/g, ' ').trim();
+
+                let deg = '';
+                let sch = '';
+
+                if (pendingEdu.length >= 2) {
+                    deg = pendingEdu[pendingEdu.length - 2];
+                    sch = pendingEdu[pendingEdu.length - 1];
+                } else if (pendingEdu.length === 1) {
+                    if (/University|College|Institute|School/i.test(pendingEdu[0])) {
+                        sch = pendingEdu[0];
+                        deg = rest;
+                    } else {
+                        deg = pendingEdu[0];
+                        sch = rest;
+                    }
+                } else {
+                    deg = rest;
+                    if (i + 1 < eduLines.length && /University|College|Institute|School/i.test(eduLines[i + 1])) {
+                        sch = eduLines[i + 1].trim();
+                        i++;
+                    }
+                }
+
+                cvData.education.push({
+                    degree: deg || 'Degree',
+                    school: sch || '',
+                    startDate: startD,
+                    endDate: endD,
+                    location: ''
+                });
+                pendingEdu = [];
+            } else {
+                pendingEdu.push(line);
+            }
+        }
+    }
+
+    // E. CERTIFICATES PARSER
+    if (sectionBlocks.certificates) {
+        const cLines = sectionBlocks.certificates;
+        const certList = [];
+        let curCert = '';
+
+        cLines.forEach(line => {
+            const trimmed = line.trim();
+            if (!trimmed) return;
+
+            const isBullet = /^[•\-\*▪●◦·]|\b[oO]\s+[A-Z]/.test(trimmed);
+            const clean = trimmed.replace(/^[•\-\*▪●◦·]\s*|^[oO]\s+/, '').trim();
+
+            if (isBullet || !curCert) {
+                if (curCert) certList.push(curCert);
+                curCert = clean;
+            } else {
+                if (/^(?:from|at|by|in|with|of|internal|academy|university|institute)\b/i.test(clean) || curCert.length < 35 || clean.length < 25) {
+                    curCert += ' ' + clean;
+                } else {
+                    certList.push(curCert);
+                    curCert = clean;
+                }
+            }
+        });
+        if (curCert) certList.push(curCert);
+        cvData.certificates = [...new Set(certList.filter(c => c.length > 2))];
+    }
+
+    // F. PROJECTS PARSER
+    if (sectionBlocks.projects) {
+        const pLines = sectionBlocks.projects;
+        let currentProj = null;
+
+        for (let i = 0; i < pLines.length; i++) {
+            const line = pLines[i].trim();
+            if (!line) continue;
+
+            const isBullet = /^[•\-\*▪●◦·]|\b[oO]\s+[A-Z]/.test(line);
+            const isVerbDesc = /^(?:Built|Developed|Worked|Created|Designed|Implemented|Engineered|Managed)\b/i.test(line);
+
+            if (!isBullet && !isVerbDesc) {
+                if (currentProj) {
+                    cvData.projects.push(currentProj);
+                }
+                let pName = line;
+                let pRole = 'Software Project';
+
+                if (pName.includes('—') || pName.includes(' - ')) {
+                    const sp = pName.includes('—') ? pName.split('—') : pName.split(/\s*[-–—]\s*/);
+                    pName = sp[0].trim();
+                    pRole = sp.slice(1).join(' ').trim();
+                } else if (i + 1 < pLines.length && !/^[•\-\*▪●◦·]/.test(pLines[i + 1]) && /^(?:Developer|Engineer|Lead|Full Stack|Contributor|Software Project|Academic Project|Mobile App|Web App|Research Project|Personal Project)\b/i.test(pLines[i + 1])) {
+                    pRole = pLines[i + 1].trim();
+                    i++;
+                }
+
+                currentProj = {
+                    name: pName,
+                    role: pRole,
+                    description: ''
+                };
+            } else if (currentProj) {
+                const b = line.replace(/^[•\-\*▪●◦·]\s*|^[oO]\s+/, '').trim();
+                if (b) {
+                    currentProj.description = currentProj.description ? currentProj.description + '\n• ' + b : '• ' + b;
+                }
+            } else {
+                currentProj = {
+                    name: line.replace(/^[•\-\*▪●◦·]\s*|^[oO]\s+/, '').trim(),
+                    role: 'Project',
+                    description: ''
+                };
+            }
+        }
+        if (currentProj) {
+            cvData.projects.push(currentProj);
+        }
+    }
+
+    // G. LANGUAGES PARSER
+    if (sectionBlocks.languages) {
+        const lLines = sectionBlocks.languages;
+        lLines.forEach(line => {
+            const trimmed = line.replace(/^[•\-\*▪●◦·]\s*/, '').trim();
+            if (trimmed.length > 2) {
+                const parts = trimmed.split(/[-–—:|]/);
+                const lName = parts[0].trim();
+                const lLevel = parts[1] ? parts[1].trim() : 'Fluent';
+                let rating = 5;
+                if (/Native|Bilingual/i.test(lLevel)) rating = 5;
+                else if (/Fluent|Professional/i.test(lLevel)) rating = 4;
+                else if (/Intermediate|Conversational/i.test(lLevel)) rating = 3;
+                else if (/Basic|Elementary/i.test(lLevel)) rating = 2;
+
+                cvData.languages.push({
+                    name: lName,
+                    level: lLevel,
+                    rating: rating
+                });
+            }
+        });
+    }
+
+    // Deduplicate certificates
+    cvData.certificates = [...new Set(cvData.certificates)];
+
+    // Activate dynamic sections
     if (cvData.projects.length > 0 && !dynamicSectionKeys.includes('projects')) {
         dynamicSectionKeys.push('projects');
+    }
+    if (cvData.certificates.length > 0 && !dynamicSectionKeys.includes('certificates')) {
+        dynamicSectionKeys.push('certificates');
+    }
+    if (cvData.languages.length > 0 && !dynamicSectionKeys.includes('languages')) {
+        dynamicSectionKeys.push('languages');
     }
 
     populateFormFromData();
